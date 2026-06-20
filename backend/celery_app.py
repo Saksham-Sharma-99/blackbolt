@@ -20,5 +20,5 @@ celery.conf.update(
     },
 )
 
-# Auto-discover tasks in app/tasks/
-celery.autodiscover_tasks(["app.tasks"])
+# Import tasks so they are registered with the celery app
+import app.tasks.ingestion  # noqa: F401, E402

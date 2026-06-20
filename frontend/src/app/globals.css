@@ -1,26 +1,160 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --comic-red: #e53935;
+  --comic-yellow: #ffca28;
+  --comic-blue: #42a5f5;
+  --comic-green: #66bb6a;
+  --comic-paper: #1e1e2e;
+  --comic-paper-mid: #2a2a3d;
+  --comic-paper-light: #35354a;
+  --comic-ink: #e8e6f0;
+  --comic-border-color: #555568;
+  --comic-muted: #8888a0;
+  --comic-surface: #252538;
+  --background: var(--comic-paper);
+  --foreground: var(--comic-ink);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-comic-red: var(--comic-red);
+  --color-comic-yellow: var(--comic-yellow);
+  --color-comic-blue: var(--comic-blue);
+  --color-comic-green: var(--comic-green);
+  --color-comic-paper: var(--comic-paper);
+  --color-comic-paper-mid: var(--comic-paper-mid);
+  --color-comic-paper-light: var(--comic-paper-light);
+  --color-comic-ink: var(--comic-ink);
+  --color-comic-border: var(--comic-border-color);
+  --color-comic-muted: var(--comic-muted);
+  --color-comic-surface: var(--comic-surface);
+  --font-sans: var(--font-comic-neue);
+  --font-heading: var(--font-bangers);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-comic-neue, "Comic Neue", cursive);
+}
+
+/* Ben-Day dots pattern */
+.ben-day-dots {
+  background-image: radial-gradient(
+    circle,
+    var(--comic-red) 1px,
+    transparent 1px
+  );
+  background-size: 8px 8px;
+  opacity: 0.06;
+}
+
+.ben-day-dots-blue {
+  background-image: radial-gradient(
+    circle,
+    var(--comic-blue) 1px,
+    transparent 1px
+  );
+  background-size: 6px 6px;
+  opacity: 0.05;
+}
+
+/* Halftone overlay effect */
+.halftone-overlay {
+  background-image: radial-gradient(
+    circle,
+    var(--comic-ink) 0.5px,
+    transparent 0.5px
+  );
+  background-size: 4px 4px;
+  opacity: 0.03;
+}
+
+/* Comic panel border */
+.comic-border {
+  border: 3px solid var(--comic-border-color);
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.5);
+}
+
+.comic-border-thin {
+  border: 2px solid var(--comic-border-color);
+  box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.4);
+}
+
+/* Paper texture overlay — dark variant */
+.paper-texture {
+  background-color: var(--comic-paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%231e1e2e'/%3E%3Crect width='1' height='1' fill='%23252538' opacity='0.4'/%3E%3C/svg%3E");
+}
+
+/* Comic text shadow for headings */
+.comic-text-shadow {
+  text-shadow:
+    2px 2px 0px rgba(0, 0, 0, 0.7),
+    -1px -1px 0px rgba(0, 0, 0, 0.4),
+    1px -1px 0px rgba(0, 0, 0, 0.4),
+    -1px 1px 0px rgba(0, 0, 0, 0.4);
+}
+
+/* Speech bubble shape */
+.speech-bubble {
+  position: relative;
+  border-radius: 1rem;
+  border: 2px solid var(--comic-border-color);
+  background: var(--comic-surface);
+  padding: 0.5rem 1rem;
+}
+
+.speech-bubble::after {
+  content: "";
+  position: absolute;
+  bottom: -10px;
+  left: 20px;
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 10px solid var(--comic-border-color);
+}
+
+/* Starburst / action badge */
+.starburst {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--comic-yellow);
+  color: #1a1a1a;
+  font-family: var(--font-bangers, "Bangers", cursive);
+  clip-path: polygon(
+    50% 0%,
+    61% 35%,
+    98% 35%,
+    68% 57%,
+    79% 91%,
+    50% 70%,
+    21% 91%,
+    32% 57%,
+    2% 35%,
+    39% 35%
+  );
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--comic-paper);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--comic-border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--comic-muted);
 }

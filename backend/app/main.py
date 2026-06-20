@@ -12,12 +12,13 @@ from app.config import settings
 from app.exceptions import BlackboltError
 from app.logging import setup_logging
 from app.models.project import Project
-from app.routers import health, ingestion, projects
+from app.models.user import User
+from app.routers import health, ingestion, projects, public
 
 logger = structlog.get_logger()
 
 # All Beanie document models — add new models here as they're created
-DOCUMENT_MODELS = [Project]
+DOCUMENT_MODELS = [Project, User]
 
 
 @asynccontextmanager
@@ -73,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(projects.router, prefix="/api/v1")
     app.include_router(ingestion.router, prefix="/api/v1")
+    app.include_router(public.router, prefix="/api/v1")
 
     return app
 
