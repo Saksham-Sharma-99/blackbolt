@@ -216,7 +216,7 @@ export default function ProjectPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-full">
+      <div className="flex flex-col h-screen">
         <Header />
         <div className="flex-1 flex items-center justify-center">
           <div className="animate-spin rounded-full h-10 w-10 border-3 border-[var(--comic-ink)] border-t-transparent" />
@@ -227,7 +227,7 @@ export default function ProjectPage() {
 
   if (!project) {
     return (
-      <div className="flex flex-col min-h-full">
+      <div className="flex flex-col h-screen">
         <Header />
         <div className="flex-1 flex items-center justify-center">
           <p className="font-[family-name:var(--font-bangers)] text-2xl text-[var(--comic-red)]">
@@ -239,12 +239,12 @@ export default function ProjectPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-full">
+    <div className="flex flex-col h-screen">
       <Header />
 
       <div className="flex-1 flex min-h-0">
-        {/* Workflow Sidebar — non-scrolling */}
-        <aside className="w-64 shrink-0 border-r-3 border-[var(--comic-border-color)] bg-[var(--comic-paper)] self-stretch overflow-y-auto">
+        {/* Workflow Sidebar — sticky, full height, non-scrolling */}
+        <aside className="w-64 shrink-0 border-r-3 border-[var(--comic-border-color)] bg-[var(--comic-paper)] overflow-y-auto">
           <WorkflowSidebar
             steps={workflowSteps}
             selectedStepId={selectedStepId}
@@ -257,8 +257,8 @@ export default function ProjectPage() {
 
         {/* Main Content — scrollable */}
         <main className="flex-1 overflow-y-auto min-h-0">
-          {/* Project header */}
-          <div className="border-b-3 border-[var(--comic-border-color)] bg-[var(--comic-paper-mid)] px-6 py-4">
+          {/* Project header — sticky within main */}
+          <div className="sticky top-0 z-10 border-b-3 border-[var(--comic-border-color)] bg-[var(--comic-paper-mid)] px-6 py-4">
             <h1 className="font-[family-name:var(--font-bangers)] text-3xl text-[var(--comic-ink)]">
               {project.name}
             </h1>
