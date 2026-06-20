@@ -1,18 +1,22 @@
+import math
 import os
+import re
+import unicodedata
 from datetime import datetime
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.config import settings
 from app.dependencies import get_storage_service
 from app.middleware.auth import get_current_user
+from app.models.page import Page
 from app.models.project import Project, ProjectStatus
 from app.models.user import User
+from app.schemas.page import PageResponse, PaginatedPagesResponse
 from app.schemas.project import (
     ConfirmUploadResponse,
     CreateProjectResponse,
-    PageUrlsResponse,
     ProjectCreate,
     ProjectListItem,
     ProjectResponse,
@@ -26,11 +30,30 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-def _s3_prefix(user_id: str, project_id: str) -> str:
-    return f"users/{user_id}/projects/{project_id}"
+def _slugify(text: str) -> str:
+    """Convert text to a URL/path-safe slug."""
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    return text.strip("-")
 
 
-def _project_to_response(project: Project) -> ProjectResponse:
+def _s3_prefix(filename: str, project_id: str) -> str:
+    """Generate a slug-based S3 prefix from filename and project ID."""
+    name_without_ext = os.path.splitext(filename)[0]
+    slug = _slugify(name_without_ext)
+    short_id = str(project_id)[:6]
+    return f"projects/{slug}-{short_id}"
+
+
+def _presign_url(storage: StorageService, s3_key: str | None) -> str | None:
+    """Convert an S3 key to a presigned GET URL, or return None."""
+    if not s3_key:
+        return None
+    return storage.generate_presigned_get_url(s3_key)
+
+
+def _project_to_response(project: Project, storage: StorageService) -> ProjectResponse:
     return ProjectResponse(
         id=str(project.id),
         name=project.name,
@@ -38,8 +61,8 @@ def _project_to_response(project: Project) -> ProjectResponse:
         page_count=project.page_count,
         source_format=project.source_format,
         original_filename=project.original_filename,
-        cover_url=project.cover_url,
-        thumbnail_url=project.thumbnail_url,
+        cover_url=_presign_url(storage, project.cover_url),
+        thumbnail_url=_presign_url(storage, project.thumbnail_url),
         error_message=project.error_message,
         is_public=project.is_public,
         pipeline_progress=project.pipeline_progress,
@@ -48,13 +71,13 @@ def _project_to_response(project: Project) -> ProjectResponse:
     )
 
 
-def _project_to_list_item(project: Project) -> ProjectListItem:
+def _project_to_list_item(project: Project, storage: StorageService) -> ProjectListItem:
     return ProjectListItem(
         id=str(project.id),
         name=project.name,
         status=project.status,
         page_count=project.page_count,
-        thumbnail_url=project.thumbnail_url,
+        thumbnail_url=_presign_url(storage, project.thumbnail_url),
         is_public=project.is_public,
         updated_at=project.updated_at,
     )
@@ -88,7 +111,7 @@ async def create_project(
     )
     await project.insert()
 
-    prefix = _s3_prefix(str(user.id), str(project.id))
+    prefix = _s3_prefix(body.filename, str(project.id))
     project.s3_prefix = prefix
     await project.save()
 
@@ -155,6 +178,7 @@ async def confirm_upload(
 @router.get("/", response_model=list[ProjectListItem])
 async def list_projects(
     user: User = Depends(get_current_user),
+    storage: StorageService = Depends(get_storage_service),
 ) -> list[ProjectListItem]:
     """List the current user's projects, most recent first."""
     projects = (
@@ -162,37 +186,64 @@ async def list_projects(
         .sort(-Project.updated_at)
         .to_list()
     )
-    return [_project_to_list_item(p) for p in projects]
+    return [_project_to_list_item(p, storage) for p in projects]
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(
     project_id: str,
     user: User = Depends(get_current_user),
+    storage: StorageService = Depends(get_storage_service),
 ) -> ProjectResponse:
     """Get full details for a single project."""
     project = await _get_owned_project(project_id, user)
-    return _project_to_response(project)
+    return _project_to_response(project, storage)
 
 
-@router.get("/{project_id}/pages", response_model=PageUrlsResponse)
+@router.get("/{project_id}/pages", response_model=PaginatedPagesResponse)
 async def get_project_pages(
     project_id: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
     storage: StorageService = Depends(get_storage_service),
-) -> PageUrlsResponse:
-    """Return presigned GET URLs for all extracted page images."""
+) -> PaginatedPagesResponse:
+    """Return paginated page data with presigned GET URLs."""
     project = await _get_owned_project(project_id, user)
 
-    if not project.s3_prefix:
-        return PageUrlsResponse(pages=[])
+    query = {"project_id": str(project.id)}
+    total = await Page.find(query).count()
+    if total == 0:
+        return PaginatedPagesResponse(
+            pages=[], total=0, page=page, per_page=per_page, total_pages=0
+        )
 
-    pages_prefix = f"{project.s3_prefix}/pages/"
-    keys = storage.list_objects(pages_prefix)
-    keys.sort()
+    total_pages = math.ceil(total / per_page)
+    skip = (page - 1) * per_page
 
-    urls = [storage.generate_presigned_get_url(key) for key in keys]
-    return PageUrlsResponse(pages=urls)
+    page_docs = (
+        await Page.find(query).sort("page_number").skip(skip).limit(per_page).to_list()
+    )
+
+    page_responses = [
+        PageResponse(
+            id=str(p.id),
+            page_number=p.page_number,
+            width=p.width,
+            height=p.height,
+            url=storage.generate_presigned_get_url(p.s3_key),
+            file_size_bytes=p.file_size_bytes,
+        )
+        for p in page_docs
+    ]
+
+    return PaginatedPagesResponse(
+        pages=page_responses,
+        total=total,
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages,
+    )
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
@@ -200,6 +251,7 @@ async def update_project(
     project_id: str,
     body: ProjectUpdate,
     user: User = Depends(get_current_user),
+    storage: StorageService = Depends(get_storage_service),
 ) -> ProjectResponse:
     """Update project metadata (name, etc.)."""
     project = await _get_owned_project(project_id, user)
@@ -210,4 +262,4 @@ async def update_project(
     project.updated_at = datetime.utcnow()
     await project.save()
 
-    return _project_to_response(project)
+    return _project_to_response(project, storage)

@@ -13,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from app.dependencies import get_storage_service
 from app.main import app
 from app.middleware.auth import get_current_user
+from app.models.page import Page
 from app.models.project import Project, ProjectStatus
 
 
@@ -169,16 +170,64 @@ async def test_confirm_upload_file_not_found(client, mock_storage, mock_celery_t
     assert response.status_code == 400
 
 
+def _mock_page_find(page_docs, total=None):
+    """Create a mock for Page.find() that supports count, sort, skip, limit chain."""
+    if total is None:
+        total = len(page_docs)
+
+    mock_count_query = MagicMock()
+    mock_count_query.count = AsyncMock(return_value=total)
+
+    mock_list_query = MagicMock()
+    mock_list_query.sort = MagicMock(return_value=mock_list_query)
+    mock_list_query.skip = MagicMock(return_value=mock_list_query)
+    mock_list_query.limit = MagicMock(return_value=mock_list_query)
+    mock_list_query.to_list = AsyncMock(return_value=page_docs)
+    mock_list_query.count = AsyncMock(return_value=total)
+
+    call_count = {"n": 0}
+
+    def _find_side_effect(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return mock_count_query
+        return mock_list_query
+
+    return _find_side_effect
+
+
+def _make_mock_page(page_number, project_id="proj-456"):
+    page = MagicMock()
+    page.id = f"page-{page_number}"
+    page.project_id = project_id
+    page.page_number = page_number
+    page.s3_key = f"projects/test-abc123/pages/{page_number:04d}/main.png"
+    page.width = 1250
+    page.height = 1650
+    page.file_size_bytes = 50000
+    return page
+
+
 @pytest.mark.asyncio
 async def test_get_project_pages(client, mock_storage):
     project = _make_mock_project()
+    mock_pages = [_make_mock_page(1), _make_mock_page(2)]
 
-    with patch.object(Project, "get", new_callable=AsyncMock, return_value=project):
+    with (
+        patch.object(Project, "get", new_callable=AsyncMock, return_value=project),
+        patch.object(Page, "find", side_effect=_mock_page_find(mock_pages)),
+    ):
         response = await client.get("/api/v1/projects/proj-456/pages")
 
     assert response.status_code == 200
     data = response.json()
     assert len(data["pages"]) == 2
+    assert data["total"] == 2
+    assert data["page"] == 1
+    assert data["per_page"] == 20
+    assert data["total_pages"] == 1
+    assert data["pages"][0]["page_number"] == 1
+    assert data["pages"][0]["width"] == 1250
 
 
 @pytest.mark.asyncio

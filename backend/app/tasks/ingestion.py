@@ -44,6 +44,31 @@ def _get_project(db, project_id: str) -> dict:
     return db["projects"].find_one({"_id": ObjectId(project_id)})
 
 
+def _insert_page(
+    db,
+    project_id: str,
+    page_number: int,
+    s3_key: str,
+    width: int,
+    height: int,
+    extraction_dpi: int,
+    file_size_bytes: int,
+) -> None:
+    """Insert a Page document using pymongo."""
+    db["pages"].insert_one(
+        {
+            "project_id": project_id,
+            "page_number": page_number,
+            "s3_key": s3_key,
+            "width": width,
+            "height": height,
+            "extraction_dpi": extraction_dpi,
+            "file_size_bytes": file_size_bytes,
+            "created_at": datetime.utcnow(),
+        }
+    )
+
+
 @celery.task(name="app.tasks.ingestion.process_upload", bind=True)
 def process_upload(self, project_id: str) -> dict:
     """Extract pages from an uploaded PDF, generate covers, upload to S3.
@@ -52,8 +77,8 @@ def process_upload(self, project_id: str) -> dict:
     1. Download PDF from S3
     2. Validate PDF (not encrypted, has pages)
     3. Extract each page as PNG at configured DPI
-    4. Upload page images to S3
-    5. Generate cover image and thumbnail from page 1
+    4. Upload page images to S3 and create Page documents
+    5. Generate cover and thumbnail from page 1 (reusing extracted bytes)
     6. Update project with page count and cover URLs
 
     Args:
@@ -100,18 +125,34 @@ def process_upload(self, project_id: str) -> dict:
             page_count=page_count,
         )
 
-        # Step 3 & 4: Extract and upload each page
+        # Step 3 & 4: Extract pages, upload to S3, create Page documents
         dpi = settings.page_extraction_dpi
         scale = dpi / 72  # PDF default is 72 DPI
         matrix = fitz.Matrix(scale, scale)
+        cover_bytes = None
 
         for i in range(page_count):
             page = doc[i]
             pix = page.get_pixmap(matrix=matrix)
             png_bytes = pix.tobytes("png")
 
-            page_key = f"{s3_prefix}/pages/{i + 1:03d}.png"
+            page_key = f"{s3_prefix}/pages/{i + 1:04d}/main.png"
             storage.upload_file(page_key, png_bytes, "image/png")
+
+            _insert_page(
+                db,
+                project_id=project_id,
+                page_number=i + 1,
+                s3_key=page_key,
+                width=pix.width,
+                height=pix.height,
+                extraction_dpi=dpi,
+                file_size_bytes=len(png_bytes),
+            )
+
+            # Capture page 1 bytes for cover reuse
+            if i == 0:
+                cover_bytes = png_bytes
 
             logger.info(
                 "page_extracted",
@@ -120,15 +161,12 @@ def process_upload(self, project_id: str) -> dict:
                 total=page_count,
             )
 
-        # Step 5: Generate cover and thumbnail from page 1
-        first_page = doc[0]
-        cover_pix = first_page.get_pixmap(matrix=matrix)
-        cover_bytes = cover_pix.tobytes("png")
+        doc.close()
 
+        # Step 5: Cover and thumbnail from page 1 (reused bytes, no re-render)
         cover_key = f"{s3_prefix}/covers/original.png"
         storage.upload_file(cover_key, cover_bytes, "image/png")
 
-        # Generate thumbnail
         cover_image = Image.open(io.BytesIO(cover_bytes))
         thumb_size = (
             settings.cover_thumbnail_width,
@@ -141,8 +179,6 @@ def process_upload(self, project_id: str) -> dict:
 
         thumb_key = f"{s3_prefix}/covers/thumbnail.png"
         storage.upload_file(thumb_key, thumb_bytes, "image/png")
-
-        doc.close()
 
         # Step 6: Update project
         _update_project(

@@ -1,7 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
 import { useMemo } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Star, Image as ImageIcon } from "lucide-react";
@@ -25,7 +25,7 @@ export function ComicCard({ project }: ComicCardProps) {
     return (hash % 200) / 100; // -1 to 1
   }, [id]);
 
-  const hasThumbnail = !!thumbnail_url && thumbnail_url.startsWith("http");
+  const hasThumbnail = !!thumbnail_url;
 
   return (
     <Link href={`/projects/${id}`} className="block">
@@ -39,11 +39,10 @@ export function ComicCard({ project }: ComicCardProps) {
           {/* Cover image */}
           <div className="relative aspect-[3/4] bg-[var(--comic-paper-light)] overflow-hidden">
             {hasThumbnail ? (
-              <Image
+              <img
                 src={thumbnail_url}
                 alt={`Cover of ${name}`}
-                fill
-                className="object-cover group-hover:scale-105 transition-transform duration-300"
+                className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-[var(--comic-muted)]">

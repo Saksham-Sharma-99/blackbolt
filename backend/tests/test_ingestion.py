@@ -30,7 +30,7 @@ def mock_mongo():
     """Mock pymongo for Celery task (sync DB access)."""
     project_doc = {
         "_id": ObjectId(TEST_PROJECT_ID),
-        "s3_prefix": "users/u1/projects/p1",
+        "s3_prefix": "projects/test-comic-abc123",
         "original_filename": "test.pdf",
         "user_id": "u1",
     }
@@ -38,6 +38,7 @@ def mock_mongo():
     mock_db = MagicMock()
     mock_db["projects"].find_one.return_value = project_doc
     mock_db["projects"].update_one.return_value = None
+    mock_db["pages"].insert_one.return_value = None
 
     with patch("app.tasks.ingestion._get_sync_db", return_value=mock_db):
         yield mock_db
@@ -65,13 +66,60 @@ def test_process_upload_extracts_pages(mock_mongo, mock_task_storage):
     # Should upload 3 pages + 1 cover + 1 thumbnail = 5 uploads
     assert mock_task_storage.upload_file.call_count == 5
 
-    # Verify page keys
+    # Verify page keys use 4-digit padding and /main.png suffix
     page_calls = [call.args[0] for call in mock_task_storage.upload_file.call_args_list]
-    assert "users/u1/projects/p1/pages/001.png" in page_calls
-    assert "users/u1/projects/p1/pages/002.png" in page_calls
-    assert "users/u1/projects/p1/pages/003.png" in page_calls
-    assert "users/u1/projects/p1/covers/original.png" in page_calls
-    assert "users/u1/projects/p1/covers/thumbnail.png" in page_calls
+    assert "projects/test-comic-abc123/pages/0001/main.png" in page_calls
+    assert "projects/test-comic-abc123/pages/0002/main.png" in page_calls
+    assert "projects/test-comic-abc123/pages/0003/main.png" in page_calls
+    assert "projects/test-comic-abc123/covers/original.png" in page_calls
+    assert "projects/test-comic-abc123/covers/thumbnail.png" in page_calls
+
+
+def test_process_upload_creates_page_documents(mock_mongo, mock_task_storage):
+    from app.tasks.ingestion import process_upload
+
+    process_upload(TEST_PROJECT_ID)
+
+    # Should insert 3 Page documents
+    assert mock_mongo["pages"].insert_one.call_count == 3
+
+    # Verify first page document fields
+    first_page_doc = mock_mongo["pages"].insert_one.call_args_list[0].args[0]
+    assert first_page_doc["project_id"] == TEST_PROJECT_ID
+    assert first_page_doc["page_number"] == 1
+    assert first_page_doc["s3_key"] == "projects/test-comic-abc123/pages/0001/main.png"
+    assert first_page_doc["width"] > 0
+    assert first_page_doc["height"] > 0
+    assert first_page_doc["extraction_dpi"] == 150
+    assert first_page_doc["file_size_bytes"] > 0
+
+    # Verify page numbers are sequential
+    for i, call in enumerate(mock_mongo["pages"].insert_one.call_args_list):
+        assert call.args[0]["page_number"] == i + 1
+
+
+def test_process_upload_reuses_page1_for_cover(mock_mongo, mock_task_storage):
+    from app.tasks.ingestion import process_upload
+
+    process_upload(TEST_PROJECT_ID)
+
+    upload_calls = mock_task_storage.upload_file.call_args_list
+
+    # Find the page 1 upload and cover upload
+    page1_bytes = None
+    cover_bytes = None
+    for call in upload_calls:
+        key = call.args[0]
+        data = call.args[1]
+        if key.endswith("0001/main.png"):
+            page1_bytes = data
+        elif key.endswith("covers/original.png"):
+            cover_bytes = data
+
+    # Cover should be the exact same bytes as page 1 (no re-render)
+    assert page1_bytes is not None
+    assert cover_bytes is not None
+    assert page1_bytes is cover_bytes  # Same object reference, not just equal
 
 
 def test_process_upload_updates_project(mock_mongo, mock_task_storage):

@@ -11,6 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app.config import settings
 from app.exceptions import BlackboltError
 from app.logging import setup_logging
+from app.models.page import Page
 from app.models.project import Project
 from app.models.user import User
 from app.routers import health, ingestion, projects, public
@@ -18,7 +19,7 @@ from app.routers import health, ingestion, projects, public
 logger = structlog.get_logger()
 
 # All Beanie document models — add new models here as they're created
-DOCUMENT_MODELS = [Project, User]
+DOCUMENT_MODELS = [Page, Project, User]
 
 
 @asynccontextmanager

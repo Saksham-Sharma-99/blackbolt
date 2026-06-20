@@ -76,8 +76,21 @@ export type ConfirmUploadResponse = {
   task_id: string;
 };
 
-export type PageUrlsResponse = {
-  pages: string[];
+export type PageInfo = {
+  id: string;
+  page_number: number;
+  width: number;
+  height: number;
+  url: string;
+  file_size_bytes: number;
+};
+
+export type PaginatedPagesResponse = {
+  pages: PageInfo[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
 };
 
 /**
@@ -141,8 +154,10 @@ export const api = {
 
   getPublicProjects: () => request<ProjectListItem[]>("/public/projects"),
 
-  getProjectPages: (projectId: string) =>
-    request<PageUrlsResponse>(`/projects/${projectId}/pages`),
+  getProjectPages: (projectId: string, page = 1, perPage = 20) =>
+    request<PaginatedPagesResponse>(
+      `/projects/${projectId}/pages?page=${page}&per_page=${perPage}`
+    ),
 
   uploadToPresignedUrl,
 };

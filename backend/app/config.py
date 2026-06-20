@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     s3_presigned_url_expiry: int = 3600  # 1 hour
 
     # Page extraction
-    page_extraction_dpi: int = 300
+    page_extraction_dpi: int = 150
     cover_thumbnail_width: int = 400
     cover_thumbnail_height: int = 600
 

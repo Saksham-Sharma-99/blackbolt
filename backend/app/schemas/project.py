@@ -48,7 +48,3 @@ class ConfirmUploadResponse(BaseModel):
     project_id: str
     status: ProjectStatus
     task_id: str
-
-
-class PageUrlsResponse(BaseModel):
-    pages: list[str]
